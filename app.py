@@ -1,3 +1,4 @@
+from decimal import Decimal
 import math
 import requests
 from flask import Flask, request, jsonify
@@ -11,10 +12,26 @@ def truncate(f, n):
     multiplier = 10**n
     return math.trunc(f * multiplier) / multiplier
 
+def has_at_least_decimals(number, expected_decimals):
+    """
+    Checks if a number has at least the expected amount of decimals using the Decimal type.
+    """
+    # Convert the number to a string first to ensure accurate conversion to Decimal
+    d = Decimal(str(number))
+    # Get the number of digits after the decimal point
+    # as_tuple().exponent gives a negative value corresponding to the number of decimals
+    decimal_places = abs(d.as_tuple().exponent) if d.as_tuple().exponent < 0 else 0
+    return decimal_places >= expected_decimals
+
 @app.route('/create_issue', methods=['POST'])
 def create_issue():
     try:
         data = request.json
+        try:
+            checkValidInput(data)
+        except Exception as e:
+            print(e)
+            return jsonify({"error": "Invalid input format."}), 422
         try:
             checkIssueDuplicates(data)
         except Exception as e:
@@ -106,3 +123,33 @@ def checkDatabaseDuplicates(data):
     if str(truncate(latitude, 3)) in response_body and str(truncate(longitude, 3)) in response_body:
         raise Exception("Duplicate database entry found.")
 
+def checkValidInput(data):
+    body = data["body"]
+
+    # There should be four lines in the body
+    body_lines = body.splitlines()
+    if len(body_lines) != 4:
+        raise Exception("Invalid input format - incorrect number of lines.")
+    
+    # First line should have mosque name with ###
+    if not body_lines[0].strip().startswith("###"):
+        raise Exception("Invalid input format - incorrect mosque name format.")
+    # Second line should have mosque address with **Address:**
+    if not body_lines[1].strip().startswith("**Address:**"):
+        raise Exception("Invalid input format - incorrect address format.")
+    
+    # Third line should have latitude with **Latitude:**
+    if not body_lines[2].strip().startswith("**Latitude:**"):
+        raise Exception("Invalid input format - incorrect latitude format.")
+    # Latitude should be a number with at least 5 decimal places
+    latitude = float(body_lines[2].split("**Latitude:**", 1)[1].strip())
+    if not has_at_least_decimals(latitude, 5):
+        raise Exception("Invalid input format - latitude must have at least 5 decimal places.")
+    
+    # Fourth line should have longitude with **Longitude:**
+    if not body_lines[3].strip().startswith("**Longitude:**"):
+        raise Exception("Invalid input format - incorrect longitude format.")
+    # Longitude should be a number with at least 5 decimal places
+    longitude = float(body_lines[3].split("**Longitude:**", 1)[1].strip())
+    if not has_at_least_decimals(longitude, 5):
+        raise Exception("Invalid input format - longitude must have at least 5 decimal places.")
